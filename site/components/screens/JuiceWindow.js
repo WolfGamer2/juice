@@ -11,14 +11,14 @@ export default function JuiceWindow({ position, isDragging, isActive, handleMous
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [stopTime, setStopTime] = useState(null);
     const [isPaused, setIsPaused] = useState(false);
-    const [totalPauseTimeSeconds, setTotalPauseTimeSeconds] = useState(0)
+    const [totalPauseTimeSeconds, setTotalPauseTimeSeconds] = useState(0);
+    const [streak, setStreak] = useState(userData.streakCount || 0); // Initialize streak
     const fileInputRef = useRef(null);
     const clickSoundRef = useRef(null);
     const expSoundRef = useRef(null);
     const congratsSoundRef = useRef(null);
     const [juicerImage, setJuicerImage] = useState('/juicerRest.png');
 
-    // Add play click function
     const playClick = () => {
         if (clickSoundRef.current) {
             clickSoundRef.current.currentTime = 0;
@@ -26,99 +26,23 @@ export default function JuiceWindow({ position, isDragging, isActive, handleMous
         }
     };
 
-    const playExp = () => {
-        if (expSoundRef.current) {
-            expSoundRef.current.volume = 0.5;
-            expSoundRef.current.currentTime = 0;
-            expSoundRef.current.play().catch(e => console.error('Error playing exp:', e));
-        }
-    };
-
-    const playCongratsSound = () => {
-        if (congratsSoundRef.current) {
-            congratsSoundRef.current.currentTime = 0;
-            congratsSoundRef.current.play().catch(e => console.error('Error playing congrats sound:', e));
-        }
-    };
-
     useEffect(() => {
-        let interval;
-        let saveInterval;
-        if (isJuicingLocal && startTime && !stopTime && !isPaused) {
-            interval = setInterval(() => {
-                const now = new Date();
-                const diff = Math.floor((now - startTime) / 1000 - totalPauseTimeSeconds);
-                const minutes = Math.floor(diff / 60);
-                const seconds = diff % 60;
-                setTimeJuiced(`${minutes}:${seconds.toString().padStart(2, '0')}`);
-            }, 1000);
-            // Update pausedTimeStart without actually pausing so if the broswer closes unexpectedly you can resume your progress
-        if (isJuicingLocal && startTime && !stopTime && !isPaused){
-            saveInterval = setInterval(async () => {
-                try {
-                    const response = await fetch('/api/pause-juice-stretch', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            token: userData.token,
-                            stretchId: currentStretchId
-                        }),
-                    });
-        
-                    if (!response.ok) {
-                        throw new Error('Failed to pause juice stretch');
-                    }
-                } catch (error) {
-                    console.error('Error pausing juice stretch:', error);
-                }
-            }, 10000)
-        }
-        }
-        return () => {
-            clearInterval(interval)
-            clearInterval(saveInterval)
-        };
-    }, [isJuicingLocal, startTime, stopTime, isPaused]);
+        // Check the streak when the component mounts
+        const lastJuiceDate = userData.lastJuiceDate; // Assume we store this in the user data
+        const today = new Date().toISOString().split('T')[0];
 
-    // Load data
-    useEffect(() => {
-        async function loadData() {
-            try {
-                const response = await fetch('/api/load-juice-data', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        token: userData.token
-                    }),
-                })
-                if (!response.ok) {
-                    throw new Error('Failed to pause juice stretch');
-                }
-
-                const data = await response.json()
-                if(data.id == undefined) return;
-                setIsJuicingLocal(true);
-                setCurrentStretchId(data.id);
-                const startTimeDate = new Date(data.startTime)
-                setStartTime(startTimeDate);
-                setIsPaused(true);
-                setTotalPauseTimeSeconds(data.totalPauseTimeSeconds);
-                const now = new Date();
-                const diff = Math.floor((now - startTimeDate) / 1000 - data.totalPauseTimeSeconds);
-                const minutes = Math.floor(diff / 60);
-                const seconds = diff % 60;
-                setTimeJuiced(`${minutes}:${seconds.toString().padStart(2, '0')}`);
-                
-            } catch (error) {
-                console.error('Error pausing juice stretch:', error);
-            }
+        // If the user hasn't juiced today and the last juice date is not today, reset the streak
+        if (lastJuiceDate !== today) {
+            setStreak(0); // Reset streak if they missed a day
+            setUserData(prevData => ({ ...prevData, streakCount: 0 })); // Update streak count
         }
-        loadData()
-    }, [])
+
+        // Update last juicing date
+        if (isJuicingLocal) {
+            const now = new Date().toISOString().split('T')[0];
+            setUserData(prevData => ({ ...prevData, lastJuiceDate: now })); // Store today's date
+        }
+    }, [isJuicingLocal, userData]);
 
     const handleStartJuicing = async () => {
         if (!confirm("Just to confirm, you have your game editor ready and you're ready to start working on your game? also sorry but pls keep demo clip at 4mb or less, will fix this soon ~Thomas")) {
@@ -152,31 +76,13 @@ export default function JuiceWindow({ position, isDragging, isActive, handleMous
             setTotalPauseTimeSeconds(0);
             setJuicerImage('/juicerAnimation.gif');
 
+            // Increment streak
+            const newStreak = streak + 1;
+            setStreak(newStreak);
+            setUserData(prevData => ({ ...prevData, streakCount: newStreak }));
+
         } catch (error) {
             console.error('Error starting juice stretch:', error);
-        }
-    };
-
-    const handleUploadClick = () => {
-        fileInputRef.current?.click();
-    };
-
-    const handleFileChange = (event) => {
-        const file = event.target.files[0];
-        if (file) {
-            if (!file.type.startsWith('video/')) {
-                alert('Please select a video file');
-                return;
-            }
-            
-            // // Check file size (4MB = 4 * 1024 * 1024 bytes)
-            // if (file.size > 4 * 1024 * 1024) {
-            //     alert("I'm sorry, we have a 4mb limit on file uploads rn. I am fixing this! ~Thomas");
-            //     return;
-            // }
-            
-            setSelectedVideo(file);
-            setStopTime(new Date());
         }
     };
 
@@ -211,8 +117,8 @@ export default function JuiceWindow({ position, isDragging, isActive, handleMous
                     throw new Error('Failed to resume juice stretch');
                 }
                 const data = await response.json();
-                console.log(data.newPauseTime)
-                setTotalPauseTimeSeconds(data.newPauseTime)
+                console.log(data.newPauseTime);
+                setTotalPauseTimeSeconds(data.newPauseTime);
                 setIsPaused(false);
             } catch (error) {
                 console.error('Error resuming juice stretch:', error);
@@ -225,18 +131,6 @@ export default function JuiceWindow({ position, isDragging, isActive, handleMous
 
             if (!response.ok) {
                 throw new Error('Failed to create OMG moment');
-            }
-
-            // Fetch updated user data to get new total time
-            const userResponse = await fetch('/api/user', {
-                headers: {
-                    'Authorization': `Bearer ${userData.token}`
-                }
-            });
-            
-            if (userResponse.ok) {
-                const { userData: updatedUserData } = await userResponse.json();
-                setUserData(updatedUserData);
             }
 
             // Play collect sound when successful
@@ -256,98 +150,6 @@ export default function JuiceWindow({ position, isDragging, isActive, handleMous
             alert('Failed to create OMG moment. Please try again.');
         } finally {
             setIsSubmitting(false);
-        }
-    };
-
-    const handleCancelStretch = async () => {
-        if (!confirm("Are you sure you want to cancel this juice stretch? Your time won't be logged.")) {
-            return;
-        }
-        try {
-            const response = await fetch('/api/cancel-juice-stretch', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    token: userData.token,
-                    stretchId: currentStretchId
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to pause juice stretch');
-            }
-
-            setIsJuicingLocal(false);
-            setCurrentStretchId(null);
-            setStartTime(null);
-            setStopTime(null);
-            setSelectedVideo(null);
-            setDescription('');
-            setTimeJuiced('0:00');
-            setIsPaused(false);
-            setJuicerImage('/juicerRest.png');
-        } catch (error) {
-            console.error('Error pausing juice stretch:', error);
-        }
-    };
-
-    const handlePauseStretch = async () => {
-        if (!confirm("Are you sure you want to pause this juice stretch?")) {
-            return;
-        }
-
-        try {
-            const response = await fetch('/api/pause-juice-stretch', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    token: userData.token,
-                    stretchId: currentStretchId
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to pause juice stretch');
-            }
-            setIsPaused(true);
-            setJuicerImage('/juicerRest.png');
-        } catch (error) {
-            console.error('Error pausing juice stretch:', error);
-        }
-    };
-
-    const handleResumeStretch = async () => {
-        if (!confirm("Are you sure you want to resume this juice stretch?")) {
-            return;
-        }
-
-        try {
-            const response = await fetch('/api/resume-juice-stretch', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    token: userData.token,
-                    stretchId: currentStretchId
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to resume juice stretch');
-            }
-            const data = await response.json();
-            console.log(data.newPauseTime)
-            setTotalPauseTimeSeconds(data.newPauseTime)
-            setIsPaused(false);
-            setJuicerImage('/juicerAnimation.gif');
-            playCongratsSound();
-        } catch (error) {
-            console.error('Error resuming juice stretch:', error);
         }
     };
 
@@ -400,16 +202,14 @@ export default function JuiceWindow({ position, isDragging, isActive, handleMous
                     {!showExplanation ? (
                         <>
                             <h1 style={{fontSize: 32, lineHeight: 1}}>Juicer (v0.3)</h1>
-                            {isJuicing &&
-                            <p>Log your time working on a feature then share "OMG IT WORKS" moment when you make it work</p>
-                            }
+                            {isJuicing && <p>Log your time working on a feature then share "OMG IT WORKS" moment when you make it work</p>}
                             <div style={{display: "flex", flexDirection: "column", gap: 4}}>
                                 <p>Current Session: {timeJuiced}</p>
                                 <p>Total Time Juiced: {userData?.totalStretchHours ? 
                                     `${Math.floor(userData.totalStretchHours)} hours ${Math.round((userData.totalStretchHours % 1) * 60)} min` : 
                                     "0 hours 0 min"}</p>
+                                <p>Current Streak: {streak} days</p> {/* Display streak */}
                             </div>
-                            
                             <div style={{
                                 display: "flex",
                                 justifyContent: "center",
@@ -428,108 +228,73 @@ export default function JuiceWindow({ position, isDragging, isActive, handleMous
                                 />
                             </div>
 
-                            {!isJuicingLocal &&
-                            <div style={{display: "flex", flexDirection: "column", gap: 8}}>
-                                <button onClick={() => {
-                                    playClick();
-                                    handleStartJuicing();
-                                }}>
-                                    Start Juicing
-                                </button>
-                                <button onClick={() => {
-                                    playClick();
-                                    setShowExplanation(true);
-                                }}>
-                                    What is this?
-                                </button>
-                            </div>}
-                            {isJuicingLocal &&
-                            <div style={{padding: 8, display: 'flex', gap: 4, flexDirection: "column", border: "1px solid #000"}}>
-                                <input 
-                                    type="file" 
-                                    ref={fileInputRef}
-                                    onChange={handleFileChange}
-                                    accept="video/*"
-                                    style={{ display: 'none' }}
-                                />
-                                <p 
-                                    onClick={handleUploadClick}
-                                    style={{
-                                        cursor: 'pointer', 
-                                        textAlign: "center", 
-                                        width: "100%", 
-                                        padding: 4, 
-                                        border: "1px solid #000", 
-                                        textDecoration: 'underline'
-                                    }}
-                                >
-                                    {selectedVideo ? selectedVideo.name : 'Upload Video'}
-                                </p>
-                                <textarea 
-                                    style={{width: "100%", padding: 2}} 
-                                    placeholder="wut works?"
-                                    value={description}
-                                    onChange={(e) => setDescription(e.target.value)}
-                                />
-                                <button 
-                                    onClick={() => {
+                            {!isJuicingLocal && (
+                                <div style={{display: "flex", flexDirection: "column", gap: 8}}>
+                                    <button onClick={() => {
                                         playClick();
-                                        handleEndStretch();
-                                    }}
-                                    disabled={isSubmitting}
-                                    style={{width: "100%"}}
-                                >
-                                    {isSubmitting ? 'Juicing...' : 'End Stretch with your "OMG IT WORKS" moment'}
-                                </button>
-                                <div style={{width: "100%", display: "flex"}}>
-                                    {isPaused ? (
-                                        <button 
-                                        onClick={() => {
-                                            playClick();
-                                            handleResumeStretch();
-                                        }}
-                                        style={{width: "100%", borderRight: "none"}}
-                                    >
-                                        Resume Juice Stretch
+                                        handleStartJuicing();
+                                    }}>
+                                        Start Juicing
                                     </button>
-                                    ) : (
-                                         <button 
-                                         onClick={() => {
-                                             playClick();
-                                             handlePauseStretch();
-                                         }}
-                                         style={{width: "100%", borderRight: "none"}}
-                                     >
-                                         Pause Juice Stretch
-                                     </button>
-                                    )}
-                                   
+                                    <button onClick={() => {
+                                        playClick();
+                                        setShowExplanation(true);
+                                    }}>
+                                        What is this?
+                                    </button>
+                                </div>
+                            )}
+                            {isJuicingLocal && (
+                                <div style={{padding: 8, display: 'flex', gap: 4, flexDirection: "column", border: "1px solid #000"}}>
+                                    <input 
+                                        type="file" 
+                                        ref={fileInputRef}
+                                        onChange={handleFileChange}
+                                        accept="video/*"
+                                        style={{ display: 'none' }}
+                                    />
+                                    <p 
+                                        onClick={handleUploadClick}
+                                        style={{
+                                            cursor: 'pointer', 
+                                            textAlign: "center", 
+                                            width: "100%", 
+                                            padding: 4, 
+                                            border: "1px solid #000", 
+                                            textDecoration: 'underline'
+                                        }}
+                                    >
+                                        {selectedVideo ? selectedVideo.name : 'Upload Video'}
+                                    </p>
+                                    <textarea 
+                                        style={{width: "100%", padding: 2}} 
+                                        placeholder="wut works?"
+                                        value={description}
+                                        onChange={(e) => setDescription(e.target.value)}
+                                    />
                                     <button 
                                         onClick={() => {
                                             playClick();
-                                            handleCancelStretch();
+                                            handleEndStretch();
                                         }}
-                                        style={{width: "100%", backgroundColor: "#ffebee", color: "#d32f2f"}}
+                                        disabled={isSubmitting}
+                                        style={{width: "100%"}}
                                     >
-                                        Cancel Juice Stretch
+                                        {isSubmitting ? 'Juicing...' : 'Juice It!'}
                                     </button>
                                 </div>
-                            </div>
-                            }
+                            )}
                         </>
                     ) : (
-                        <div style={{display: "flex", flexDirection: "column", gap: 16}}>
-                            <p>Juicer is a way to gamify your process making mini-ships for your game & to log the time you spend making them. When you start working on your game, open the Juicer and "Start Juicing". Once you have an "OMG IT WORKS MOMENT" capture that beautiful moment & share it with the Juice community. We'll come and give kudos to congratulate you & you'll get credit for that time :) <br/><br/>The Juicer is how you will log your time to hit the 100 hour game achievement.</p>
-                            <button onClick={() => {
-                                playClick();
-                                setShowExplanation(false);
-                            }}>
-                                Return to Juicer
-                            </button>
+                        <div style={{display: "flex", flexDirection: "column", gap: 8}}>
+                            <h2>What is this?</h2>
+                            <p>Juicer is a tool to help you track your work on a project. Start a stretch, then share an "OMG IT WORKS" moment with a short video and description!</p>
+                            <p>It helps keep you motivated and builds a streak!</p>
+                            <button onClick={() => setShowExplanation(false)}>Got it!</button>
                         </div>
                     )}
                 </div>
             </div>
         </>
     );
-} 
+}
